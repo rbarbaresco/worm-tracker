@@ -11,7 +11,6 @@
 			<artifactId>opencv</artifactId>
 			<version>2.4.9-7</version>
 		</dependency>
-
 	</dependencies>
 
 	<build>
