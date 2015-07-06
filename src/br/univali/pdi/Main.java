@@ -10,7 +10,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
@@ -25,7 +27,6 @@ import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.highgui.VideoCapture;
 import org.opencv.imgproc.Imgproc;
-import org.opencv.video.BackgroundSubtractorMOG2;
 
 public class Main {
 
@@ -36,6 +37,7 @@ public class Main {
 		
 		Mat frame = new Mat();
 		VideoCapture camera = new VideoCapture("files/08-amp.mp4");
+		
 //		VideoCapture camera = new VideoCapture("files/05-dec-amplitude.mp4");
 		JFrame jframe = new JFrame("Title");
 		jframe.setExtendedState(JFrame.MAXIMIZED_BOTH);
@@ -56,10 +58,45 @@ public class Main {
 		di.getPrefs()[7][1] = 1;
 		di.getPrefs()[8][1] = 1;
 		
-		BackgroundSubtractorMOG2 bgs = new BackgroundSubtractorMOG2();
+		
+		Point[] tracing = new Point[50];
+		int cursor = 0;
+		
+		for (int i = 0; i < tracing.length; i++) {
+			tracing[i] = new Point(0,0);
+		}
+		
+		long dTime = System.currentTimeMillis();
 		
 		Rect bounding_rect = null;
 		int delay = 10;
+		
+		
+		Scalar colorR = new Scalar(255, 0, 0);
+		Scalar colorG = new Scalar(0, 255, 0);
+		Scalar colorB = new Scalar(0, 0, 255);
+		BufferedImage bi = new BufferedImage(10, 10, BufferedImage.TYPE_3BYTE_BGR);
+		ImageIcon image = new ImageIcon(bi);
+		
+		
+		final Map<MatOfPoint,Double> map = new HashMap<MatOfPoint, Double>();
+		
+		Comparator<MatOfPoint> comparator = new Comparator<MatOfPoint>() {
+
+			@Override
+			public int compare(MatOfPoint o1, MatOfPoint o2) {
+				double a = map.get(o1);//Imgproc.contourArea(o1, false);
+				double b = map.get(o2);//Imgproc.contourArea(o2, false);
+
+				return a < b ? 1 : -1;
+			}
+		};
+		
+		ArrayList<MatOfPoint> arrayList = new ArrayList<MatOfPoint>();
+
+		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+
+		
 		while (true) {
 			
 			if (camera.read(frame)) {
@@ -67,41 +104,30 @@ public class Main {
 
 				Imgproc.cvtColor(frame, frameEd, Imgproc.COLOR_RGB2GRAY);
 				Imgproc.threshold(frameEd, frameEd, 65, 255, Imgproc.THRESH_BINARY_INV);
-				//Imgproc.inv
 				Imgproc.blur(frameEd, frameEd, new Size(3,3));
 				Imgproc.threshold(frameEd, frameEd, 10, 255, Imgproc.THRESH_BINARY);
 				Imgproc.dilate(frameEd, frameEd, Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(8,8)));
-				List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+				
 				Mat hierarchy = new Mat();
-				//alphaBGS(bi);
-				//thinIt(bi);
-				//ms.draw(bi);
-				//di.draw(bi);
 				
-				
+				contours.clear();
 				Imgproc.findContours(frameEd, contours, hierarchy,
 						Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_SIMPLE);
 
-				double largest_area = 0;
 				int largest_contour_index = 0;
 				
-				Collections.sort(contours,new Comparator<MatOfPoint>() {
-
-					@Override
-					public int compare(MatOfPoint o1, MatOfPoint o2) {
-						double a = Imgproc.contourArea(o1, false);
-						double b = Imgproc.contourArea(o2, false);
-
-						return a < b ? 1 : -1;
-					}
-				});
+				map.clear();
+				for (MatOfPoint matOfPoint : contours) {
+					map.put(matOfPoint, Imgproc.contourArea(matOfPoint, false));
+				}
+				
+				Collections.sort(contours,comparator);
 				
 				if(delay <= 0 && bounding_rect != null){
 					for (int i = 0; i < contours.size(); i++) {
 						Rect new_rect = Imgproc.boundingRect(contours.get(i));
 						if (inArea(bounding_rect, new_rect)) {
 							bounding_rect =  Imgproc.boundingRect(contours.get(i));
-							largest_area = Imgproc.contourArea(contours.get(i), false);
 							largest_contour_index = i;
 							break;
 						}
@@ -111,48 +137,54 @@ public class Main {
 				}
 				
 				
-//				for (int i = 0; i < contours.size(); i++) {
-//					
-//					double a = Imgproc.contourArea(contours.get(i), false);
-//					
-//					Rect new_bounding = Imgproc.boundingRect(contours.get(i));
-//					
-////					if ( delay <= 0 && bounding_rect != null && !inArea(bounding_rect,new_bounding) ) {
-////						continue;
-////					}
-//					if ( a > largest_area ) {
-//						largest_area = a;
-//						largest_contour_index = i;
-//						bounding_rect = new_bounding;
-//					}
-//				}
-				
 				delay--;
 				
 				Point center1 = new Point(bounding_rect.x + bounding_rect.width/2,bounding_rect.y + bounding_rect.height/2);
 
-				System.out.println(center1+" : "+largest_area+" : "+delay);
+
+				
 				Imgproc.cvtColor(frameEd, frameEd, Imgproc.COLOR_GRAY2RGB);
-
-				Scalar colorR = new Scalar(255, 0, 0);
-				Scalar colorG = new Scalar(0, 255, 0);
-
-				ArrayList<MatOfPoint> arrayList = new ArrayList<MatOfPoint>();
+				
+				arrayList.clear();
 				arrayList.add(contours.get(largest_contour_index));
 
 				Imgproc.drawContours( frame, arrayList,0, colorR,3 ); // Draw the largest contour using previously stored index.
 				
 				
 				Core.circle(frame, center1, Math.max(bounding_rect.width, bounding_rect.height)/2, colorG);
-				Core.rectangle(frame, new Point(bounding_rect.x,bounding_rect.y), 
-						new Point(bounding_rect.x+bounding_rect.width,bounding_rect.y+bounding_rect.height), colorG, 3); 
-				//Imgproc.rectangle(src, bounding_rect,  Scalar(0,255,0),1, 8,0); 
+				Core.rectangle(frame, new Point(bounding_rect.x,bounding_rect.y), new Point(bounding_rect.x+bounding_rect.width,bounding_rect.y+bounding_rect.height), colorG, 3); 
 				
-				BufferedImage bi = Mat2BufferedImage(frame);
-				ImageIcon image = new ImageIcon(bi);
+				
+				
+				
+				//TRACING STUFF AND THINGS
+				tracing[cursor] = center1;
+				cursor = (cursor + 1) % tracing.length;
+				for (int i = 0; i < tracing.length; i++) {
+					Core.circle(frame, tracing[i], 1, colorB,-1);
+				}
+				
+				//MEMORY REFRESHENER
+				frameEd.release();
+				bi.flush();
+				image.getImage().flush();
+				
+				bi = Mat2BufferedImage(frame);
+				image = new ImageIcon(bi);
 				vidPanel.setIcon(image);
 				vidPanel.repaint();
 				
+				
+				
+				
+				//timing is precious!
+				long now = System.currentTimeMillis();
+				System.out.println(now - dTime);
+				dTime = now;
+				
+				
+			}else{
+				System.out.println("false");
 			}
 			
 		}
